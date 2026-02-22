@@ -2,18 +2,22 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <arpa/inet.h>
+
+/* https://datatracker.ietf.org/doc/html/rfc1320 */
 
 #define F(X, Y, Z) ((X & Y) | (~X & Z))
 #define G(X, Y, Z) ((X & Y) | (X & Z) | (Y & Z))
 #define H(X, Y, Z) (X ^ Y ^ Z)
 
 #define ROT(X, l, r) ((X << l) | (X >> r))
-#define ROTL(X, n) ROT(X, n, 32 - n)
-#define ROTR(X, n) ROT(X, 32 - n, n)
+#define ROTL(X, n) ROT(X, n, (32 - n))
+#define ROTR(X, n) ROT(X, (32 - n), n)
 
-#define MD4_ROUND1(a, b, c, d, k, s) (a = ROTL(a + F(b, c, d) + k, s))
-#define MD4_ROUND2(a, b, c, d, k, s) (a = ROTL(a + G(b, c, d) + k + 0x5A827999U, s))
-#define MD4_ROUND3(a, b, c, d, k, s) (a = ROTL(a + H(b, c, d) + k + 0x6ED9EBA1U, s))
+#define MD4_ROUND1(a, b, c, d, k, s) (a = ROTL((a + F(b, c, d) + k), s));
+#define MD4_ROUND2(a, b, c, d, k, s) (a = ROTL((a + G(b, c, d) + k + 0x5A827999U), s))
+#define MD4_ROUND3(a, b, c, d, k, s) (a = ROTL((a + H(b, c, d) + k + 0x6ED9EBA1U), s))
 
 typedef struct
 {
@@ -24,7 +28,6 @@ typedef struct
 
 static void Md4_Init(Md4Context *const ctx);
 static void Md4_Process(Md4Context *const ctx, const uint32_t data[16]);
-static void Md4_Finalize(Md4Context *const ctx, const uint32_t data[16], const uint8_t **hash);
 
 void Md4(char const *const msg)
 {
@@ -33,6 +36,52 @@ void Md4(char const *const msg)
 
     Md4Context ctx;
     Md4_Init(&ctx);
+
+    /* process 512 bit (64 byte) chunks of data */
+    size_t rem_bytes = strlen(msg);
+
+    while (true)
+    {
+        if (rem_bytes >= 64)
+        {
+            /* enough data */
+            Md4_Process(&ctx, (uint32_t *)(&msg[ctx.byte_len]));
+            ctx.byte_len += 64;
+            rem_bytes -= 64;
+        }
+        else
+        {
+            /* need padding at the end */
+            uint8_t data[64];
+            memset(data, 0, sizeof(data));
+
+            if (rem_bytes > 0)
+            {
+                memcpy((void *)&data[0], (void *)&msg[ctx.byte_len], rem_bytes * sizeof(uint8_t));
+                ctx.byte_len += rem_bytes;
+            }
+
+            /* pad a 1 bit - it's guaranteed to fit */
+            data[rem_bytes] = 0x80U;
+
+            if (rem_bytes + 1 >= 56)
+            {
+                /* length doesn't fit, process zero padded */
+                Md4_Process(&ctx, (uint32_t *)data);
+                memset(data, 0, sizeof(data));
+            }
+            /* add length and process */
+            uint64_t len = ctx.byte_len * 8U;
+            memcpy((void *)&data[56], (void *)&len, sizeof(len));
+            Md4_Process(&ctx, (uint32_t *)data);
+            break;
+        }
+    }
+
+    printf("MD4 for \"%s\" is: ", msg);
+    for (uint8_t i = 0; i < 4; ++i)
+        printf("%08x", htonl(ctx.W[i]));
+    printf("\n");
 }
 
 static void Md4_Init(Md4Context *const ctx)
@@ -124,14 +173,4 @@ static void Md4_Process(Md4Context *const ctx, const uint32_t data[16])
     ctx->W[1] += b;
     ctx->W[2] += c;
     ctx->W[3] += d;
-}
-
-static void Md4_Finalize(Md4Context *const ctx, const uint32_t data[16], const uint8_t **hash)
-{
-    if (!ctx || !hash)
-        return;
-
-    *hash = malloc(16 * sizeof(uint8_t));
-    if (!*hash)
-        return;
 }
