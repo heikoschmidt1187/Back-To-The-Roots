@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug back_to_the_roots (gdb)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/back_to_the_roots",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "preLaunchTask": "build (debug)",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty printing",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Break on abort",
+                    "text": "catch signal SIGABRT",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Break on segfault",
+                    "text": "catch signal SIGSEGV",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
